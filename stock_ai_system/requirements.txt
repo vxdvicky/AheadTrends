@@ -1,0 +1,12 @@
+pandas
+numpy
+yfinance
+supabase
+scikit-learn
+xgboost
+joblib
+streamlit
+plotly
+fastapi
+uvicorn
+requests
