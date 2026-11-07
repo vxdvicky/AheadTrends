@@ -24,7 +24,7 @@ def sync_all_stocks(period="2y"):
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
-        df.reset_index(inplace=True)
+        df = df.reset_index()
 
         records = []
         for _, row in df.iterrows():

@@ -54,7 +54,7 @@ def run_predictions_for_all_stocks():
 
         df = compute_technical_indicators(df)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        df.dropna(inplace=True)
+        df = df.dropna()
         
         latest_row = df.iloc[[-1]]
         latest_date = latest_row['date'].values[0]
