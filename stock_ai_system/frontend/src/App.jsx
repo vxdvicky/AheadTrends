@@ -13,6 +13,9 @@ export default function App() {
   const [stockData, setStockData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Dynamic Base API URL (Render Production + Vite Env + Local Fallback)
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://aheadtrends-backend.onrender.com';
+
   // Navigation States
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -27,20 +30,20 @@ export default function App() {
 
   // Initial load stocks list
   useEffect(() => {
-    axios.get('http://127.0.0.1:8000/api/stocks')
+    axios.get(`${API_BASE_URL}/api/stocks`)
       .then(res => {
         setStocks(res.data);
         if (res.data.length > 0) setSelectedStock(res.data[0].symbol);
       })
       .catch(err => console.error("Error fetching stocks:", err));
-  }, []);
+  }, [API_BASE_URL]);
 
   // Fetch full stock payload
   useEffect(() => {
     if (!selectedStock) return;
     setLoading(true);
 
-    axios.get(`http://127.0.0.1:8000/api/stock/${selectedStock}`)
+    axios.get(`${API_BASE_URL}/api/stock/${selectedStock}`)
       .then(res => {
         setStockData(res.data);
         setLoading(false);
@@ -49,7 +52,7 @@ export default function App() {
         console.error("Error fetching stock data:", err);
         setLoading(false);
       });
-  }, [selectedStock]);
+  }, [selectedStock, API_BASE_URL]);
 
   // Handle Preset Clicks
   const handlePresetChange = (preset) => {
