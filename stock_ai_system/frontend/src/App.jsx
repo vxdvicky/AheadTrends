@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, ShieldCheck, RefreshCw, BarChart2, Filter, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, ShieldCheck, RefreshCw, BarChart2, Calendar } from 'lucide-react';
 
 export default function App() {
   const [stocks, setStocks] = useState([]);
@@ -9,11 +9,11 @@ export default function App() {
   const [stockData, setStockData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Timeframe filter state for Price Chart ('1M', '6M', '1Y', 'ALL')
+  // Timeframe filter state for Price Chart ('1W', '1M', '6M', '1Y', 'ALL')
   const [chartTimeframe, setChartTimeframe] = useState('ALL');
 
-  // Audit Logs Filter States
-  const [auditPreset, setAuditPreset] = useState('ALL'); // '7D', '30D', 'ALL', 'CUSTOM'
+  // Audit Logs Pure Client-Side Filter States
+  const [auditPreset, setAuditPreset] = useState('ALL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -27,22 +27,12 @@ export default function App() {
       .catch(err => console.error(err));
   }, []);
 
-  // Fetch stock details when stock or audit date range changes
+  // Fetch full stock details ONLY when selectedStock changes (No Reload on Filter click)
   useEffect(() => {
     if (!selectedStock) return;
     setLoading(true);
 
-    let query = `http://127.0.0.1:8000/api/stock/${selectedStock}`;
-    const params = new URLSearchParams();
-
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-
-    if (params.toString()) {
-      query += `?${params.toString()}`;
-    }
-
-    axios.get(query)
+    axios.get(`http://127.0.0.1:8000/api/stock/${selectedStock}`)
       .then(res => {
         setStockData(res.data);
         setLoading(false);
@@ -51,9 +41,9 @@ export default function App() {
         console.error(err);
         setLoading(false);
       });
-  }, [selectedStock, startDate, endDate]);
+  }, [selectedStock]);
 
-  // Handle Quick Audit Filter Button Clicks
+  // Handle Quick Audit Filter Button Clicks (Pure Frontend State Update - Zero Reload)
   const handlePresetChange = (preset) => {
     setAuditPreset(preset);
     const today = new Date();
@@ -74,20 +64,36 @@ export default function App() {
     }
   };
 
-  // Filter prices data for Chart timeframe switcher
+  // 1. Dynamic Smooth Price Chart Slicing
   const filteredPrices = useMemo(() => {
-    if (!stockData?.prices || stockData.prices.length === 0) return [];
-    if (chartTimeframe === 'ALL') return stockData.prices;
+    const rawPrices = stockData?.prices;
+    if (!rawPrices || !Array.isArray(rawPrices) || rawPrices.length === 0) return [];
+    if (chartTimeframe === 'ALL') return rawPrices;
 
-    const totalPoints = stockData.prices.length;
-    let daysCutoff = totalPoints;
+    const totalPoints = rawPrices.length;
+    let itemsToTake = totalPoints;
 
-    if (chartTimeframe === '1M') daysCutoff = 30;
-    else if (chartTimeframe === '6M') daysCutoff = 180;
-    else if (chartTimeframe === '1Y') daysCutoff = 365;
+    if (chartTimeframe === '1W') itemsToTake = 5;
+    else if (chartTimeframe === '1M') itemsToTake = 22;
+    else if (chartTimeframe === '6M') itemsToTake = 125;
+    else if (chartTimeframe === '1Y') itemsToTake = 252;
 
-    return stockData.prices.slice(Math.max(0, totalPoints - daysCutoff));
+    const startIndex = Math.max(0, totalPoints - itemsToTake);
+    return rawPrices.slice(startIndex);
   }, [stockData?.prices, chartTimeframe]);
+
+  // 2. Client-Side Instant Audit Logs Filtering (No Reload)
+  const filteredAuditLogs = useMemo(() => {
+    const logs = stockData?.audit_logs;
+    if (!logs || !Array.isArray(logs)) return [];
+
+    return logs.filter(log => {
+      const logDate = log.prediction_date;
+      if (startDate && logDate < startDate) return false;
+      if (endDate && logDate > endDate) return false;
+      return true;
+    });
+  }, [stockData?.audit_logs, startDate, endDate]);
 
   const latestPrice = stockData?.prices?.length > 0 ? stockData.prices[stockData.prices.length - 1].close : 0;
   const latestPred = stockData?.latest_prediction;
@@ -104,13 +110,13 @@ export default function App() {
           <p className="text-sm text-slate-400 mt-1">Automated Multi-Stock Technical Analytics & Prediction Audit Log</p>
         </div>
 
-        {/* Responsive Dropdown Selector */}
+        {/* Stock Asset Dropdown */}
         <div className="w-full md:w-64">
           <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">Select Market Asset</label>
           <select 
             value={selectedStock} 
             onChange={(e) => setSelectedStock(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none p-3 shadow-lg"
+            className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none p-3 shadow-lg cursor-pointer"
           >
             {stocks.map(st => (
               <option key={st.id} value={st.symbol}>{st.symbol} - {st.company_name}</option>
@@ -159,12 +165,12 @@ export default function App() {
               <span className="text-xs text-slate-400 font-medium">PREDICTION VERSION</span>
               <p className="text-lg font-semibold text-slate-300 mt-3 flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-indigo-400" />
-                {latestPred?.model_version || 'RandomForest_v1'}
+                {latestPred?.model_version || 'Rolling_RandomForest_v2'}
               </p>
             </div>
           </div>
 
-          {/* Interactive Responsive Stock Chart with Timeframe Switcher */}
+          {/* Dynamic Recharts Chart with Smooth Switcher */}
           <div className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-2xl shadow-sm">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
               <h2 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
@@ -172,11 +178,11 @@ export default function App() {
               </h2>
               {/* Timeframe Buttons */}
               <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                {['1M', '6M', '1Y', 'ALL'].map((tf) => (
+                {['1W', '1M', '6M', '1Y', 'ALL'].map((tf) => (
                   <button
                     key={tf}
                     onClick={() => setChartTimeframe(tf)}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200 ${
                       chartTimeframe === tf 
                         ? 'bg-blue-600 text-white shadow-md' 
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -207,20 +213,19 @@ export default function App() {
             </div>
           </div>
 
-          {/* Audit Logs Table with Filters */}
+          {/* Smooth Client-Side Audit Logs Table */}
           <div className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-2xl shadow-sm">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4 border-b border-slate-800 pb-4">
               <h2 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
                 📜 Historical Prediction Audit Logs
               </h2>
 
-              {/* Filter Controls Bar */}
+              {/* Instant Filter Controls Bar */}
               <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                {/* Quick Presets */}
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
                   <button
                     onClick={() => handlePresetChange('7D')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
                       auditPreset === '7D' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -228,7 +233,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => handlePresetChange('30D')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
                       auditPreset === '30D' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -236,7 +241,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => handlePresetChange('ALL')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
                       auditPreset === 'ALL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -244,7 +249,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Custom Date Pickers */}
                 <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
                   <Calendar className="w-4 h-4 text-slate-400" />
                   <input
@@ -276,8 +280,8 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {stockData?.audit_logs?.length > 0 ? (
-                    stockData.audit_logs.map((log, index) => {
+                  {filteredAuditLogs.length > 0 ? (
+                    filteredAuditLogs.map((log, index) => {
                       const audit = log.prediction_results?.[0];
                       return (
                         <tr key={index} className="hover:bg-slate-800/50 transition-colors">
