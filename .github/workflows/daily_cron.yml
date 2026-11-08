@@ -1,0 +1,32 @@
+name: Daily Stock AI Retraining Pipeline
+
+on:
+  schedule:
+    # Runs Monday to Friday at 10:15 UTC (3:45 PM IST - Market Close)
+    - cron: '15 10 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          cd stock_ai_system
+          pip install -r requirements.txt
+
+      - name: Execute Daily Cron Pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          cd stock_ai_system
+          python -m src.cron_job
